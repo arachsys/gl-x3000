@@ -1,0 +1,181 @@
+System info
+===========
+
+This is a firmware recipe for GL.iNet GL-X3000 routers using arm64
+Arachsys Linux. These have a dual-core 1.3GHz MediaTek MT7981A SoC with
+512MB DDR4 RAM, 8GB eMMC storage, a 1Gbps NIC, a 2.5Gbps NIC, a Quectel
+RM520N-GL 5G modem, and dual 2.4GHz and 5GHz 802.11ax wifi.
+
+Mainline linux fully supports this SoC, whose up-to-date architecture
+eliminates any dependency on legacy arm32 userspace. Booting from eMMC
+is helpful too, as mtd-utils and the clunky ubi/ubifs tools are no longer
+required to deal with raw flash.
+
+The build script fetches sources for MediaTek tf-a, mainline u-boot and
+mainline kernel. It unpacks, patches, configures and cross-compiles them
+for the arm64 target, then constructs rootfs, kernel and initramfs images
+ready to boot from eMMC or over tftp.
+
+We patch in the device tree, nvmem partition support from OpenWrt, the
+standard Arachsys Linux kernel diffs and a handful of other small fixes.
+The kernel command line and pointers to a unit-specific nvmem partition
+are included in the kernel device tree. The bootcmd and environment are
+compiled into u-boot statically.
+
+Although the eMMC handles wear-levelling, the system does not write
+to flash during normal operation and boots with / mounted read-only.
+/var is symlinked to the tmpfs /run and syslog is redirected to dmesg
+using syslogd -k.
+
+There is no RTC so the clock reads 1970-01-01 00:00:00 UTC at boot;
+this is corrected using openntpd once the network is up and working.
+
+
+Partitioning and installing
+---------------------------
+
+Unlike OpenWrt or the manufacturer's firmware, this configuration uses
+only three user partitions, aligned with 2M erase-block boundaries:
+
+  sfdisk /dev/mmcblk0 <<< 'label: gpt'
+  sfdisk -a /dev/mmcblk0 <<< 'start=2M, size=2M, name=fip'
+  sfdisk -a /dev/mmcblk0 <<< 'size=2M, name=nvmem'
+  sfdisk -a /dev/mmcblk0 <<< 'size=+, name=root'
+
+The 2M 'fip' partition holds tf-a bl31 and u-boot, built as fip.img:
+
+  cat fip.img >/dev/mmcblk0p1
+
+The 2M 'nvmem' partition is a direct copy of the vendor 'factory' partition
+and contains the device-specific mac addresses and wifi calibration data:
+
+  cat nvmem.img >/dev/mmcblk0p2
+
+The 'root' partition holds a standard ext4 root filesystem including the
+kernel image /boot/linux.itb which is loaded using u-boot's ext4 support:
+
+  mkfs.ext4 -L root /dev/mmcblk0p3
+
+A root filesystem tree is constructed in the rootfs directory. This can
+be installed or updated on the device using rsync. It consumes about 78M
+of the available 6.8G so there is plenty free for wear levelling.
+
+Finally, the hardware boot partition /dev/mmcblk0boot0 contains the tf-a
+bl2 preloader, built as bl2.img. It needs to be unlocked before writing:
+
+  echo 0 >/sys/block/mmcblk0boot0/force_ro
+  cat bl2.img >/dev/mmcblk0boot0
+  sync /dev/mmcblk0 /dev/mmcblk0boot0
+
+It is also possible to reinstall bl2 and fip from the u-boot prompt using
+'mmc write'. The hardware boot partition can be selected with 'mmc dev 0 1'
+and the user area containing the GPT partitions with 'mmc dev 0 0'.
+
+
+Recovery boot
+-------------
+
+Use https://github.com/981213/mtk_uartboot tool to load tf-a and u-boot
+via the 3.3V serial interface for testing or recovery, bypassing any
+bootloader on eMMC:
+
+  mtk_uartboot -a -p bl2.ram -f fip.img -s /dev/ttyUSB0
+
+The serial lines are brought out to an unpopulated header on the board
+next to the ethernet ports. The bottom plate of the router needs to be
+removed to access the pads with test clips. Pry out the push-fit rubber
+caps which cover the four retaining screws, remove the screws, then use
+the mounting plate to pull the base off perpendicularly. The fit is quite
+tight but there are no side clips to release.
+
+
+Network boot
+------------
+
+To tftp boot a kernel image, power on the router with the reset button
+held. After a couple of seconds, the 1Gbps LAN interface will be configured
+with address 172.16.0.1 and attempt to fetch and run the file gl-x3000.itb
+by tftp from 172.16.0.2.
+
+A directory /tmp/tftp can be exported using dnsmasq with
+
+  dnsmasq --enable-tftp --no-daemon --port=0 --tftp-root=/tmp/tftp
+
+and a suitable kernel plus initramfs is built in bin/ramfs.itb.
+
+The power LED is switched on when the kernel starts. It flashes as
+userspace boots and generates an ephemeral ssh host key, then illuminates
+solidly again once boot is complete. The device is now accessible by ssh
+on 172.16.0.1 with an empty root password.
+
+
+Configuring the modem
+---------------------
+
+The modem ships with firmware RM520NGLAAR01A07M4G which can be upgraded
+to the current (2024-06-08) release RM520NGLAAR03A03M4G using QFirehose.
+Configure it with AT commands on /dev/ttyUSB2: this is a fake serial port
+so the baud rate is ignored. Settings persist across power cycles.
+
+Out of the box, an MBN profile forcibly enables badly-implemented internal
+CLAT and overrides the APN parameters passed in by MBIM. Disable the MBN
+automation and switch the modem back to a generic profile with:
+
+  AT+QMBNCFG="autosel",0
+  AT+QMBNCFG="deactivate"
+  AT+QMBNCFG="select","ROW_Generic_3GPP_PTCRB_GCF"
+  AT+QCFG=“clat”,0
+  AT+QMAP="ippt_nat",0
+
+Provide sensible APN defaults when not set by MBIM:
+
+  AT$QCPRFMOD=PID:1,APNNAME:"internet"
+  AT$QCPRFMOD=PID:1,PDPTYPE:"IP"
+
+Select the USB3 interface and CDC-MBIM mode:
+
+  AT+QCFG="data_interface",0,0
+  AT+QCFG="usbnet",2
+  AT+CFUN=1,1
+
+Alternatively, the PCIe MHI interface can be used with
+
+  AT+QCFG="data_interface",1,0
+
+
+NVMEM partition
+---------------
+
+In the 'nvmem' partition, notable device-specific settings begin at the
+following byte offsets:
+
+   0x00  wifi eeprom
+   0x04  wifi mac address
+   0x0a  ethernet mac address
+   0x10  factory dhcp/dns hostname
+   0x20  backup serial number
+   0x30  device serial number
+   0x40  factory wifi password
+   0x88  country code
+
+The vendor ships this in their 'factory' partition at sector offset 9216.
+Save the 2M partition image and restore to 'nvmem' after repartitioning.
+
+
+Other notes
+-----------
+
+The hub-power, modem-control, modem-power and modem-reset gpio lines need
+to be set correctly to initialise the modem for the kernel. The u-boot
+device tree contains gpio-hog nodes to do this and we fix a u-boot bug
+which would prevent them from being probed correctly.
+
+alignment.diff, gpiohog.diff, nvmem.diff and precal.diff have all been
+submitted upstream but have not landed in a release yet.
+
+In the router /etc/init and /etc/filter, we masquerade both IPv4 and
+IPv6 rather than delegating or translating an IPv6 /64 prefix, to avoid
+contravening network device limits. Unfortunately, RFC 6724 address
+selection prefers IPv4 private addresses to IPv6 local addresses, so
+we repurpose 2001:2::/64 from the reserved benchmarking range instead,
+encouraging hosts to use an IPv6 destination when available.

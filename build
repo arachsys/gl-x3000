@@ -1,0 +1,78 @@
+#!/bin/bash -e
+
+cd -- "${0%/*}"
+mkdir -p bin cache
+export MAKEFLAGS=-j$((1 + $(nproc)))
+
+if [[ ! -d src ]]; then
+  TMP=$(mktemp -d src-XXXXXX)
+  trap "rm -f -r $TMP" EXIT
+
+  pkg unpack -c cache -d $TMP/tf-a mtk-atf-20240117.tar.gz \
+    https://github.com/mtk-openwrt/arm-trusted-firmware/archive/bacca82a.tar.gz
+
+  pkg unpack -c cache -d $TMP/u-boot u-boot-2024.07-rc4.tar.gz \
+    https://github.com/u-boot/u-boot/archive/refs/tags/v2024.07-rc4.tar.gz
+
+  pkg unpack -c cache -d $TMP/linux linux-6.9.5.tar.xz \
+    https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.9.5.tar.xz
+
+  if git init $TMP; then
+    git -C $TMP add -f .
+    git -C $TMP commit -m 'Import upstream source'
+  fi >/dev/null 2>&1
+
+  for PATCH in patches/*; do
+    pkg apply -d $TMP $PATCH
+    if [[ -e $TMP/.git ]]; then
+      git -C $TMP add -f .
+      git -C $TMP commit -m "Apply $PATCH"
+    fi >/dev/null 2>&1
+  done
+
+  mv $TMP src
+  trap - EXIT
+fi
+
+if [[ ! -d rootfs ]]; then
+  IMGDIR="$IMGDIR/../arm64" pkg system rootfs \
+    curl dnsmasq e2fsprogs file hostap iproute2 iputils-ping iw ldns-tools \
+    kakoune mtr nftables openntpd openssh rsync shadow tcpdump tinymbim
+  update-etc rootfs/etc
+
+  rm -f -r rootfs/{etc/resolv.conf,lib/{include,static},run,tmp,var}
+  mkdir -p rootfs/{dev,home/root,proc,run,sys,tmp}
+  cp -d -R -T etc/base rootfs/etc && chmod 0600 rootfs/etc/shadow
+  ln -s run rootfs/var
+fi
+
+cp config/u-boot.cfg src/u-boot/.config
+cp config/u-boot.env src/u-boot/board/mediatek/mt7981/gl-x3000.env
+cp config/u-boot.dts src/u-boot/arch/arm/dts/mt7981-glinet-gl-x3000.dts
+make -C src/u-boot CC='clang -target aarch64' clean olddefconfig u-boot.bin
+
+rm -f -r src/tf-a/build-mmc src/tf-a/build-ram
+make -C src/tf-a BUILD_BASE=build-mmc E=0 VERSION_STRING='v$(VERSION)' \
+  PLAT=mt7981 BOARD_BGA=1 DRAM_USE_DDR4=1 BOOT_DEVICE=emmc LOG_LEVEL=10 \
+  BL33=../u-boot/u-boot.bin MKIMAGE=../u-boot/tools/mkimage USE_MKIMAGE=1 \
+  bl2 fip
+make -C src/tf-a BUILD_BASE=build-ram E=0 VERSION_STRING='v$(VERSION)' \
+  PLAT=mt7981 BOARD_BGA=1 DRAM_USE_DDR4=1 BOOT_DEVICE=ram RAM_BOOT_UART_DL=1 \
+  bl2
+cp src/tf-a/build-mmc/mt7981/release/fip.bin bin/fip.img
+cp src/tf-a/build-mmc/mt7981/release/bl2.img bin/bl2.img
+cp src/tf-a/build-ram/mt7981/release/bl2.bin bin/bl2.ram
+
+echo 0 >src/linux/.version && cp config/linux.cfg src/linux/.config
+make -C src/linux ARCH=arm64 olddefconfig dtbs Image.zst
+cp src/linux/arch/arm64/boot/dts/mediatek/mt7981a-glinet-gl-x3000.dtb \
+  bin/linux.dtb
+cp src/linux/arch/arm64/boot/Image.zst bin/linux.zst
+
+ln -f -s etc/init rootfs/init
+tar -c -f - --format=newc --strip-components=1 rootfs \
+  | zstd -c -19 >bin/ramfs.cpio.zst
+rm -f rootfs/init
+
+src/u-boot/tools/mkimage -f config/linux.its bin/linux.itb
+src/u-boot/tools/mkimage -f config/ramfs.its bin/ramfs.itb

@@ -1,0 +1,99 @@
+diff --git a/linux/Makefile b/linux/Makefile
+index 8def0819..dcd17237 100644
+--- a/linux/Makefile
++++ b/linux/Makefile
+@@ -429,6 +429,9 @@ HOST_LFS_CFLAGS := $(shell getconf LFS_CFLAGS 2>/dev/null)
+ HOST_LFS_LDFLAGS := $(shell getconf LFS_LDFLAGS 2>/dev/null)
+ HOST_LFS_LIBS := $(shell getconf LFS_LIBS 2>/dev/null)
+ 
++LLVM := $(shell $${CC:-cc} --version | grep -i -q -F clang && echo 1)
++LLVM_IAS := $(LLVM)
++
+ ifneq ($(LLVM),)
+ ifneq ($(filter %/,$(LLVM)),)
+ LLVM_PREFIX := $(LLVM)
+@@ -478,7 +481,7 @@ KBUILD_HOSTLDLIBS   := $(HOST_LFS_LIBS) $(HOSTLDLIBS)
+ CPP		= $(CC) -E
+ ifneq ($(LLVM),)
+ CC		= $(LLVM_PREFIX)clang$(LLVM_SUFFIX)
+-LD		= $(LLVM_PREFIX)ld.lld$(LLVM_SUFFIX)
++LD		= $(LLVM_PREFIX)ld$(LLVM_SUFFIX)
+ AR		= $(LLVM_PREFIX)llvm-ar$(LLVM_SUFFIX)
+ NM		= $(LLVM_PREFIX)llvm-nm$(LLVM_SUFFIX)
+ OBJCOPY		= $(LLVM_PREFIX)llvm-objcopy$(LLVM_SUFFIX)
+diff --git a/linux/tools/scripts/Makefile.include b/linux/tools/scripts/Makefile.include
+index 0aa40050..2cc571ca 100644
+--- a/linux/tools/scripts/Makefile.include
++++ b/linux/tools/scripts/Makefile.include
+@@ -60,7 +60,7 @@ endif
+ 
+ $(call allow-override,CC,$(LLVM_PREFIX)clang$(LLVM_SUFFIX))
+ $(call allow-override,AR,$(LLVM_PREFIX)llvm-ar$(LLVM_SUFFIX))
+-$(call allow-override,LD,$(LLVM_PREFIX)ld.lld$(LLVM_SUFFIX))
++$(call allow-override,LD,$(LLVM_PREFIX)ld$(LLVM_SUFFIX))
+ $(call allow-override,CXX,$(LLVM_PREFIX)clang++$(LLVM_SUFFIX))
+ $(call allow-override,STRIP,$(LLVM_PREFIX)llvm-strip$(LLVM_SUFFIX))
+ else
+diff --git a/tf-a/Makefile b/tf-a/Makefile
+index f4412b9b..ba18ff67 100644
+--- a/tf-a/Makefile
++++ b/tf-a/Makefile
+@@ -99,26 +99,20 @@ export Q ECHO
+ # Toolchain
+ ################################################################################
+ 
+-HOSTCC			:=	gcc
++HOSTCC			:=	cc
+ export HOSTCC
+ 
+-CC			:=	${CROSS_COMPILE}gcc
++CC			:=	${CROSS_COMPILE}clang
+ CPP			:=	${CROSS_COMPILE}cpp
+-AS			:=	${CROSS_COMPILE}gcc
++AS			:=	${CROSS_COMPILE}${CC}
+ AR			:=	${CROSS_COMPILE}ar
+ LINKER			:=	${CROSS_COMPILE}ld
+ OC			:=	${CROSS_COMPILE}objcopy
+ OD			:=	${CROSS_COMPILE}objdump
+ NM			:=	${CROSS_COMPILE}nm
+-PP			:=	${CROSS_COMPILE}gcc -E
++PP			:=	${CROSS_COMPILE}${CC} -E
+ DTC			:=	dtc
+ 
+-# Use ${LD}.bfd instead if it exists (as absolute path or together with $PATH).
+-ifneq ($(strip $(wildcard ${LD}.bfd) \
+-	$(foreach dir,$(subst :, ,${PATH}),$(wildcard ${dir}/${LINKER}.bfd))),)
+-LINKER			:=	${LINKER}.bfd
+-endif
+-
+ ################################################################################
+ # Auxiliary tools (fiptool, cert_create, etc)
+ ################################################################################
+@@ -182,7 +176,7 @@ ifneq ($(findstring clang,$(notdir $(CC))),)
+ 	else
+ 		TF_CFLAGS_aarch32	=	$(target32-directive)
+ 		TF_CFLAGS_aarch64	:=	-target aarch64-elf
+-		LD			:=	$(shell $(CC) --print-prog-name ld.lld)
++		LD			:=	$(shell $(CC) --print-prog-name llvm-ld)
+ 
+ 		AR			:=	$(shell $(CC) --print-prog-name llvm-ar)
+ 		OD			:=	$(shell $(CC) --print-prog-name llvm-objdump)
+diff --git a/u-boot/Makefile b/u-boot/Makefile
+index 0bfc7805..967ae1ba 100644
+--- a/u-boot/Makefile
++++ b/u-boot/Makefile
+@@ -392,13 +392,8 @@ include scripts/Kbuild.include
+ # Make variables (CC, etc...)
+ 
+ AS		= $(CROSS_COMPILE)as
+-# Always use GNU ld
+-ifneq ($(shell $(CROSS_COMPILE)ld.bfd -v 2> /dev/null),)
+-LD		= $(CROSS_COMPILE)ld.bfd
+-else
+ LD		= $(CROSS_COMPILE)ld
+-endif
+-CC		= $(CROSS_COMPILE)gcc
++CC		= $(CROSS_COMPILE)cc
+ CPP		= $(CC) -E
+ AR		= $(CROSS_COMPILE)ar
+ NM		= $(CROSS_COMPILE)nm

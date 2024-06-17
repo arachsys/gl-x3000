@@ -1,0 +1,3 @@
+PermitRootLogin yes
+PermitUserEnvironment yes
+Subsystem sftp internal-sftp

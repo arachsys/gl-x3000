@@ -1,0 +1,15 @@
+diff --git a/u-boot/drivers/gpio/gpio-uclass.c b/u-boot/drivers/gpio/gpio-uclass.c
+index 4234cd91..1c6e1715 100644
+--- a/u-boot/drivers/gpio/gpio-uclass.c
++++ b/u-boot/drivers/gpio/gpio-uclass.c
+@@ -1539,7 +1539,9 @@ static int gpio_post_bind(struct udevice *dev)
+ 				 * since hogs can be essential to the hardware
+ 				 * system.
+ 				 */
+-				dev_or_flags(child, DM_FLAG_PROBE_AFTER_BIND);
++				ret = device_probe(child);
++				if (ret)
++					return ret;
+ 			}
+ 		}
+ 	}

@@ -1,0 +1,173 @@
+// SPDX-License-Identifier: GPL-2.0
+
+/dts-v1/;
+#include "mt7981.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/linux-event-codes.h>
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	model = "GL.iNet GL-X3000";
+	compatible = "glinet,gl-x3000", "mediatek,mt7981";
+
+	chosen {
+		stdout-path = &uart0;
+		tick-timer = &timer0;
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x20000000>;
+	};
+
+	reg_3p3v: regulator-3p3v {
+		compatible = "regulator-fixed";
+		regulator-name = "fixed-3.3V";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&gpio 1 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		power {
+			label = "green:power";
+			gpios = <&gpio 39 GPIO_ACTIVE_LOW>;
+		};
+
+		internet {
+			label = "green:internet";
+			gpios = <&gpio 31 GPIO_ACTIVE_LOW>;
+		};
+
+		wifi-2g {
+			label = "green:wifi:2g";
+			gpios = <&gpio 30 GPIO_ACTIVE_LOW>;
+		};
+
+		wifi-5g {
+			label = "green:wifi:5g";
+			gpios = <&gpio 38 GPIO_ACTIVE_LOW>;
+		};
+
+		signal-1 {
+			label = "green:signal:1";
+			gpios = <&gpio 6 GPIO_ACTIVE_LOW>;
+		};
+
+		signal-2 {
+			label = "green:signal:2";
+			gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
+		};
+
+		signal-3 {
+			label = "green:signal:3";
+			gpios = <&gpio 8 GPIO_ACTIVE_LOW>;
+		};
+
+		signal-4 {
+			label = "green:signal:4";
+			gpios = <&gpio 4 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&eth {
+	status = "okay";
+	mediatek,gmac-id = <1>;
+	phy-mode = "gmii";
+	phy-handle = <&phy0>;
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		phy0: ethernet-phy@0 {
+			compatible = "ethernet-phy-id03a2.9461";
+			reg = <0>;
+			phy-mode = "gmii";
+		};
+	};
+};
+
+&gpio {
+	hub-power {
+		gpio-hog;
+		gpios = <5 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+
+	modem-control {
+		gpio-hog;
+		gpios = <9 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+
+	modem-reset {
+		gpio-hog;
+		gpios = <10 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+
+	modem-power {
+		gpio-hog;
+		gpios = <11 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+};
+
+&mmc0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&mmc0_pins_default>;
+	max-frequency = <52000000>;
+	bus-width = <8>;
+	cap-mmc-hw-highspeed;
+	cap-mmc-hw-reset;
+	vmmc-supply = <&reg_3p3v>;
+	non-removable;
+	status = "okay";
+};
+
+&pinctrl {
+	mmc0_pins_default: mmc0-pins-default {
+		mux {
+			function = "flash";
+			groups =  "emmc_45";
+		};
+		conf-cmd-dat {
+			pins = "SPI0_CLK", "SPI0_MOSI", "SPI0_MISO",
+				"SPI0_CS",  "SPI0_HOLD", "SPI0_WP",
+				"SPI1_CLK", "SPI1_MOSI", "SPI1_MISO";
+			input-enable;
+			drive-strength = <MTK_DRIVE_4mA>;
+			bias-pull-up = <MTK_PUPD_SET_R1R0_01>;
+		};
+		conf-clk {
+			pins = "SPI1_CS";
+			drive-strength = <MTK_DRIVE_6mA>;
+			bias-pull-down = <MTK_PUPD_SET_R1R0_10>;
+		};
+		conf-rst {
+			pins = "GPIO_WPS";
+			drive-strength = <MTK_DRIVE_4mA>;
+			bias-pull-up = <MTK_PUPD_SET_R1R0_01>;
+		};
+	};
+};
+
+&uart0 {
+	status = "okay";
+};

@@ -1,0 +1,83 @@
+diff --git a/linux/scripts/kconfig/mconf-cfg.sh b/linux/scripts/kconfig/mconf-cfg.sh
+index 1e61f50a..1937724f 100755
+--- a/linux/scripts/kconfig/mconf-cfg.sh
++++ b/linux/scripts/kconfig/mconf-cfg.sh
+@@ -4,6 +4,12 @@
+ cflags=$1
+ libs=$2
+ 
++if echo '#include <ncurses.h>' | ${HOSTCC} -E - >/dev/null 2>&1; then
++	echo -D_GNU_SOURCE > ${cflags}
++	echo -lncurses > ${libs}
++	exit 0
++fi
++
+ PKG="ncursesw"
+ PKG2="ncurses"
+ 
+@@ -36,14 +42,6 @@ if [ -f /usr/include/ncurses/ncurses.h ]; then
+ 	exit 0
+ fi
+ 
+-# As a final fallback before giving up, check if $HOSTCC knows of a default
+-# ncurses installation (e.g. from a vendor-specific sysroot).
+-if echo '#include <ncurses.h>' | ${HOSTCC} -E - >/dev/null 2>&1; then
+-	echo -D_GNU_SOURCE > ${cflags}
+-	echo -lncurses > ${libs}
+-	exit 0
+-fi
+-
+ echo >&2 "*"
+ echo >&2 "* Unable to find the ncurses package."
+ echo >&2 "* Install ncurses (ncurses-devel or libncurses-dev"
+diff --git a/linux/scripts/kconfig/nconf-cfg.sh b/linux/scripts/kconfig/nconf-cfg.sh
+index f871a216..ca74ad9b 100755
+--- a/linux/scripts/kconfig/nconf-cfg.sh
++++ b/linux/scripts/kconfig/nconf-cfg.sh
+@@ -4,6 +4,12 @@
+ cflags=$1
+ libs=$2
+ 
++if echo '#include <ncurses.h>' | ${HOSTCC} -E - >/dev/null 2>&1; then
++	echo -D_GNU_SOURCE > ${cflags}
++	echo -lncurses -lmenu -lpanel > ${libs}
++	exit 0
++fi
++
+ PKG="ncursesw menuw panelw"
+ PKG2="ncurses menu panel"
+ 
+diff --git a/u-boot/scripts/kconfig/mconf-cfg.sh b/u-boot/scripts/kconfig/mconf-cfg.sh
+index c812872d..2d95dac6 100755
+--- a/u-boot/scripts/kconfig/mconf-cfg.sh
++++ b/u-boot/scripts/kconfig/mconf-cfg.sh
+@@ -4,6 +4,12 @@
+ PKG="ncursesw"
+ PKG2="ncurses"
+ 
++if echo '#include <ncurses.h>' | ${HOSTCC} -E - >/dev/null 2>&1; then
++	echo cflags=\"-D_GNU_SOURCE\"
++	echo libs=\"-lncurses\"
++	exit 0
++fi
++
+ if [ -n "$(command -v pkg-config)" ]; then
+ 	if pkg-config --exists $PKG; then
+ 		echo cflags=\"$(pkg-config --cflags $PKG)\"
+diff --git a/u-boot/scripts/kconfig/nconf-cfg.sh b/u-boot/scripts/kconfig/nconf-cfg.sh
+index 001559ef..91b14470 100644
+--- a/u-boot/scripts/kconfig/nconf-cfg.sh
++++ b/u-boot/scripts/kconfig/nconf-cfg.sh
+@@ -4,6 +4,12 @@
+ PKG="ncursesw menuw panelw"
+ PKG2="ncurses menu panel"
+ 
++if echo '#include <ncurses.h>' | ${HOSTCC} -E - >/dev/null 2>&1; then
++	echo cflags=\"-D_GNU_SOURCE\"
++	echo libs=\"-lncurses -lmenu -lpanel\"
++	exit 0
++fi
++
+ if [ -n "$(command -v pkg-config)" ]; then
+ 	if pkg-config --exists $PKG; then
+ 		echo cflags=\"$(pkg-config --cflags $PKG)\"

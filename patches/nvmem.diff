@@ -1,0 +1,789 @@
+diff --git a/linux/Documentation/devicetree/bindings/block/block-device.yaml b/linux/Documentation/devicetree/bindings/block/block-device.yaml
+new file mode 100644
+index 00000000..c83ea525
+--- /dev/null
++++ b/linux/Documentation/devicetree/bindings/block/block-device.yaml
+@@ -0,0 +1,22 @@
++# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/block/block-device.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: block storage device
++
++description: |
++  This binding is generic and describes a block-oriented storage device.
++
++maintainers:
++  - Daniel Golle <daniel@makrotopia.org>
++
++properties:
++  partitions:
++    $ref: /schemas/block/partitions.yaml
++
++  nvmem-layout:
++    $ref: /schemas/nvmem/layouts/nvmem-layout.yaml#
++
++unevaluatedProperties: false
+diff --git a/linux/Documentation/devicetree/bindings/block/partition.yaml b/linux/Documentation/devicetree/bindings/block/partition.yaml
+new file mode 100644
+index 00000000..86b61e30
+--- /dev/null
++++ b/linux/Documentation/devicetree/bindings/block/partition.yaml
+@@ -0,0 +1,51 @@
++# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/block/partition.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Partition on a block device
++
++description: |
++  This binding describes a partition on a block device.
++  Partitions may be matched by a combination of partition number, name,
++  and UUID.
++
++maintainers:
++  - Daniel Golle <daniel@makrotopia.org>
++
++properties:
++  $nodename:
++    pattern: '^block-partition-.+$'
++
++  partnum:
++    $ref: /schemas/types.yaml#/definitions/uint32
++    description:
++      Matches partition by number if present.
++
++  partname:
++    $ref: /schemas/types.yaml#/definitions/string
++    description:
++      Matches partition by PARTNAME if present.
++
++  partuuid:
++    $ref: /schemas/types.yaml#/definitions/string
++    description:
++      Matches partition by PARTUUID if present.
++
++  nvmem-layout:
++    $ref: /schemas/nvmem/layouts/nvmem-layout.yaml#
++    description:
++      This container may reference an NVMEM layout parser.
++
++anyOf:
++  - required:
++      - partnum
++
++  - required:
++      - partname
++
++  - required:
++      - partuuid
++
++unevaluatedProperties: false
+diff --git a/linux/Documentation/devicetree/bindings/block/partitions.yaml b/linux/Documentation/devicetree/bindings/block/partitions.yaml
+new file mode 100644
+index 00000000..fd84c3ba
+--- /dev/null
++++ b/linux/Documentation/devicetree/bindings/block/partitions.yaml
+@@ -0,0 +1,20 @@
++# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/block/partitions.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Partitions on block devices
++
++description: |
++  This binding is generic and describes the content of the partitions container
++  node.
++
++maintainers:
++  - Daniel Golle <daniel@makrotopia.org>
++
++patternProperties:
++  "^block-partition-.+$":
++    $ref: partition.yaml
++
++unevaluatedProperties: false
+diff --git a/linux/Documentation/devicetree/bindings/mmc/mmc-card.yaml b/linux/Documentation/devicetree/bindings/mmc/mmc-card.yaml
+index fd347126..95ccbda8 100644
+--- a/linux/Documentation/devicetree/bindings/mmc/mmc-card.yaml
++++ b/linux/Documentation/devicetree/bindings/mmc/mmc-card.yaml
+@@ -26,6 +26,18 @@ properties:
+       Use this to indicate that the mmc-card has a broken hpi
+       implementation, and that hpi should not be used.
+ 
++  block:
++    $ref: /schemas/block/block-device.yaml#
++    description:
++      Represents the block storage provided by an SD card or the
++      main hardware partition of an eMMC.
++
++patternProperties:
++  '^boot[0-9]+':
++    $ref: /schemas/block/block-device.yaml#
++    description:
++      Represents a boot hardware partition on an eMMC.
++
+ required:
+   - compatible
+   - reg
+@@ -42,6 +54,39 @@ examples:
+             compatible = "mmc-card";
+             reg = <0>;
+             broken-hpi;
++
++            block {
++                partitions {
++                    cal_data: block-partition-rf {
++                        partnum = <3>;
++                        partname = "rf";
++
++                        nvmem-layout {
++                            compatible = "fixed-layout";
++                            #address-cells = <1>;
++                            #size-cells = <1>;
++
++                            eeprom@0 {
++                                reg = <0x0 0x1000>;
++                            };
++                        };
++                    };
++                };
++            };
++
++            boot1 {
++                nvmem-layout {
++                    compatible = "fixed-layout";
++                    #address-cells = <1>;
++                    #size-cells = <1>;
++
++                    macaddr: macaddr@a {
++                        compatible = "mac-base";
++                        reg = <0xa 0x6>;
++                        #nvmem-cell-cells = <1>;
++                    };
++                };
++            };
+         };
+     };
+ 
+diff --git a/linux/block/Kconfig b/linux/block/Kconfig
+index 1de4682d..6c8a9b0f 100644
+--- a/linux/block/Kconfig
++++ b/linux/block/Kconfig
+@@ -229,6 +229,12 @@ config BLK_INLINE_ENCRYPTION_FALLBACK
+ 	  by falling back to the kernel crypto API when inline
+ 	  encryption hardware is not present.
+ 
++config BLOCK_NOTIFIERS
++	bool "Enable support for notifications in block layer"
++	help
++	  Enable this option to provide notifiers for other subsystems
++	  upon addition or removal of block devices.
++
+ source "block/partitions/Kconfig"
+ 
+ config BLK_MQ_PCI
+diff --git a/linux/block/Makefile b/linux/block/Makefile
+index 46ada9dc..c46e2f89 100644
+--- a/linux/block/Makefile
++++ b/linux/block/Makefile
+@@ -40,3 +40,4 @@ obj-$(CONFIG_BLK_INLINE_ENCRYPTION)	+= blk-crypto.o blk-crypto-profile.o \
+ 					   blk-crypto-sysfs.o
+ obj-$(CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK)	+= blk-crypto-fallback.o
+ obj-$(CONFIG_BLOCK_HOLDER_DEPRECATED)	+= holder.o
++obj-$(CONFIG_BLOCK_NOTIFIERS) += blk-notify.o
+diff --git a/linux/block/blk-notify.c b/linux/block/blk-notify.c
+new file mode 100644
+index 00000000..594df7aa
+--- /dev/null
++++ b/linux/block/blk-notify.c
+@@ -0,0 +1,88 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * Notifiers for addition and removal of block devices
++ *
++ * Copyright (c) 2024 Daniel Golle <daniel@makrotopia.org>
++ */
++
++#include <linux/list.h>
++#include <linux/mutex.h>
++#include <linux/notifier.h>
++
++#include "blk.h"
++
++struct blk_device_list {
++	struct device *dev;
++	struct list_head list;
++};
++
++static RAW_NOTIFIER_HEAD(blk_notifier_list);
++static DEFINE_MUTEX(blk_notifier_lock);
++static LIST_HEAD(blk_devices);
++
++void blk_register_notify(struct notifier_block *nb)
++{
++	struct blk_device_list *existing_blkdev;
++
++	mutex_lock(&blk_notifier_lock);
++	raw_notifier_chain_register(&blk_notifier_list, nb);
++
++	list_for_each_entry(existing_blkdev, &blk_devices, list)
++		nb->notifier_call(nb, BLK_DEVICE_ADD, existing_blkdev->dev);
++
++	mutex_unlock(&blk_notifier_lock);
++}
++EXPORT_SYMBOL_GPL(blk_register_notify);
++
++void blk_unregister_notify(struct notifier_block *nb)
++{
++	mutex_lock(&blk_notifier_lock);
++	raw_notifier_chain_unregister(&blk_notifier_list, nb);
++	mutex_unlock(&blk_notifier_lock);
++}
++EXPORT_SYMBOL_GPL(blk_unregister_notify);
++
++static int blk_call_notifier_add(struct device *dev)
++{
++	struct blk_device_list *new_blkdev;
++
++	new_blkdev = kmalloc(sizeof(*new_blkdev), GFP_KERNEL);
++	if (!new_blkdev)
++		return -ENOMEM;
++
++	new_blkdev->dev = dev;
++	mutex_lock(&blk_notifier_lock);
++	list_add_tail(&new_blkdev->list, &blk_devices);
++	raw_notifier_call_chain(&blk_notifier_list, BLK_DEVICE_ADD, dev);
++	mutex_unlock(&blk_notifier_lock);
++
++	return 0;
++}
++
++static void blk_call_notifier_remove(struct device *dev)
++{
++	struct blk_device_list *old_blkdev, *tmp;
++
++	mutex_lock(&blk_notifier_lock);
++	list_for_each_entry_safe(old_blkdev, tmp, &blk_devices, list) {
++		if (old_blkdev->dev != dev)
++			continue;
++
++		list_del(&old_blkdev->list);
++		kfree(old_blkdev);
++	}
++	raw_notifier_call_chain(&blk_notifier_list, BLK_DEVICE_REMOVE, dev);
++	mutex_unlock(&blk_notifier_lock);
++}
++
++static struct class_interface blk_notifications_bus_interface __refdata = {
++	.class = &block_class,
++	.add_dev = &blk_call_notifier_add,
++	.remove_dev = &blk_call_notifier_remove,
++};
++
++static int __init blk_notifications_init(void)
++{
++	return class_interface_register(&blk_notifications_bus_interface);
++}
++device_initcall(blk_notifications_init);
+diff --git a/linux/block/partitions/core.c b/linux/block/partitions/core.c
+index 37b5f92d..159459db 100644
+--- a/linux/block/partitions/core.c
++++ b/linux/block/partitions/core.c
+@@ -10,6 +10,8 @@
+ #include <linux/ctype.h>
+ #include <linux/vmalloc.h>
+ #include <linux/raid/detect.h>
++#include <linux/property.h>
++
+ #include "check.h"
+ 
+ static int (*const check_part[])(struct parsed_partitions *) = {
+@@ -281,6 +283,43 @@ static ssize_t whole_disk_show(struct device *dev,
+ }
+ static const DEVICE_ATTR(whole_disk, 0444, whole_disk_show, NULL);
+ 
++static struct fwnode_handle *find_partition_fwnode(struct block_device *bdev)
++{
++	struct fwnode_handle *fw_parts, *fw_part;
++	struct device *ddev = disk_to_dev(bdev->bd_disk);
++	const char *partname, *uuid;
++	u32 partno;
++
++	fw_parts = device_get_named_child_node(ddev, "partitions");
++	if (!fw_parts)
++		fw_parts = device_get_named_child_node(ddev->parent, "partitions");
++
++	if (!fw_parts)
++		return NULL;
++
++	fwnode_for_each_child_node(fw_parts, fw_part) {
++		if (!fwnode_property_read_string(fw_part, "uuid", &uuid) &&
++		    (!bdev->bd_meta_info || strncmp(uuid,
++						    bdev->bd_meta_info->uuid,
++						    PARTITION_META_INFO_UUIDLTH)))
++			continue;
++
++		if (!fwnode_property_read_string(fw_part, "partname", &partname) &&
++		    (!bdev->bd_meta_info || strncmp(partname,
++						    bdev->bd_meta_info->volname,
++						    PARTITION_META_INFO_VOLNAMELTH)))
++			continue;
++
++		if (!fwnode_property_read_u32(fw_part, "partno", &partno) &&
++		    bdev->bd_partno != partno)
++			continue;
++
++		return fw_part;
++	}
++
++	return NULL;
++}
++
+ /*
+  * Must be called either with open_mutex held, before a disk can be opened or
+  * after all disk users are gone.
+@@ -355,6 +394,8 @@ static struct block_device *add_partition(struct gendisk *disk, int partno,
+ 			goto out_put;
+ 	}
+ 
++	device_set_node(pdev, find_partition_fwnode(bdev));
++
+ 	/* delay uevent until 'holders' subdir is created */
+ 	dev_set_uevent_suppress(pdev, 1);
+ 	err = device_add(pdev);
+diff --git a/linux/drivers/mmc/core/block.c b/linux/drivers/mmc/core/block.c
+index 90c51b12..782eb3c8 100644
+--- a/linux/drivers/mmc/core/block.c
++++ b/linux/drivers/mmc/core/block.c
+@@ -2463,6 +2463,7 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
+ 					      int area_type,
+ 					      unsigned int part_type)
+ {
++	struct fwnode_handle *fwnode;
+ 	struct mmc_blk_data *md;
+ 	int devidx, ret;
+ 	char cap_str[10];
+@@ -2515,6 +2516,7 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
+ 	md->disk->major	= MMC_BLOCK_MAJOR;
+ 	md->disk->minors = perdev_minors;
+ 	md->disk->first_minor = devidx * perdev_minors;
++	md->disk->flags = GENHD_FL_NVMEM;
+ 	md->disk->fops = &mmc_bdops;
+ 	md->disk->private_data = md;
+ 	md->parent = parent;
+@@ -2559,6 +2561,12 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
+ 
+ 	blk_queue_write_cache(md->queue.queue, cache_enabled, fua_enabled);
+ 
++	fwnode = device_get_named_child_node(subname ? md->parent->parent :
++						       md->parent,
++					     subname ? subname : "block");
++	if (fwnode)
++		device_set_node(disk_to_dev(md->disk), fwnode);
++
+ 	string_get_size((u64)size, 512, STRING_UNITS_2,
+ 			cap_str, sizeof(cap_str));
+ 	pr_info("%s: %s %s %s%s\n",
+diff --git a/linux/drivers/mmc/core/bus.c b/linux/drivers/mmc/core/bus.c
+index 0ddaee0e..e1c5fc1b 100644
+--- a/linux/drivers/mmc/core/bus.c
++++ b/linux/drivers/mmc/core/bus.c
+@@ -364,6 +364,8 @@ int mmc_add_card(struct mmc_card *card)
+ 
+ 	mmc_add_card_debugfs(card);
+ 	card->dev.of_node = mmc_of_find_child_device(card->host, 0);
++	if (card->dev.of_node && !card->dev.fwnode)
++		card->dev.fwnode = &card->dev.of_node->fwnode;
+ 
+ 	device_enable_async_suspend(&card->dev);
+ 
+diff --git a/linux/drivers/nvmem/Kconfig b/linux/drivers/nvmem/Kconfig
+index 28313449..3598fa70 100644
+--- a/linux/drivers/nvmem/Kconfig
++++ b/linux/drivers/nvmem/Kconfig
+@@ -2,6 +2,7 @@
+ menuconfig NVMEM
+ 	bool "NVMEM Support"
+ 	imply NVMEM_LAYOUTS
++	select GENERIC_NET_UTILS
+ 	help
+ 	  Support for NVMEM(Non Volatile Memory) devices like EEPROM, EFUSES...
+ 
+@@ -40,6 +41,17 @@ config NVMEM_APPLE_EFUSES
+ 	  This driver can also be built as a module. If so, the module will
+ 	  be called nvmem-apple-efuses.
+ 
++config NVMEM_BLOCK
++	tristate "Block device NVMEM provider"
++	depends on BLOCK
++	depends on OF
++	depends on NVMEM
++	select BLOCK_NOTIFIERS
++	help
++	  Allow block devices (or partitions) to act as NVMEM prodivers,
++	  typically used with eMMC to store MAC addresses or Wi-Fi
++	  calibration data on embedded devices.
++
+ config NVMEM_BCM_OCOTP
+ 	tristate "Broadcom On-Chip OTP Controller support"
+ 	depends on ARCH_BCM_IPROC || COMPILE_TEST
+diff --git a/linux/drivers/nvmem/Makefile b/linux/drivers/nvmem/Makefile
+index cdd01fbf..68fcf845 100644
+--- a/linux/drivers/nvmem/Makefile
++++ b/linux/drivers/nvmem/Makefile
+@@ -14,6 +14,8 @@ obj-$(CONFIG_NVMEM_APPLE_EFUSES)	+= nvmem-apple-efuses.o
+ nvmem-apple-efuses-y 			:= apple-efuses.o
+ obj-$(CONFIG_NVMEM_BCM_OCOTP)		+= nvmem-bcm-ocotp.o
+ nvmem-bcm-ocotp-y			:= bcm-ocotp.o
++obj-$(CONFIG_NVMEM_BLOCK)		+= nvmem-block.o
++nvmem-block-y				:= block.o
+ obj-$(CONFIG_NVMEM_BRCM_NVRAM)		+= nvmem_brcm_nvram.o
+ nvmem_brcm_nvram-y			:= brcm_nvram.o
+ obj-$(CONFIG_NVMEM_IMX_IIM)		+= nvmem-imx-iim.o
+diff --git a/linux/drivers/nvmem/block.c b/linux/drivers/nvmem/block.c
+new file mode 100644
+index 00000000..b29b0d6e
+--- /dev/null
++++ b/linux/drivers/nvmem/block.c
+@@ -0,0 +1,197 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * block device NVMEM provider
++ *
++ * Copyright (c) 2024 Daniel Golle <daniel@makrotopia.org>
++ *
++ * Useful on devices using a partition on an eMMC for MAC addresses or
++ * Wi-Fi calibration EEPROM data.
++ */
++
++#include <linux/blkdev.h>
++#include <linux/nvmem-provider.h>
++#include <linux/of.h>
++#include <linux/pagemap.h>
++#include <linux/property.h>
++
++/* List of all NVMEM devices */
++static LIST_HEAD(nvmem_devices);
++static DEFINE_MUTEX(devices_mutex);
++
++struct blk_nvmem {
++	struct nvmem_device	*nvmem;
++	struct device		*dev;
++	struct list_head	list;
++};
++
++static int blk_nvmem_reg_read(void *priv, unsigned int from,
++			      void *val, size_t bytes)
++{
++	blk_mode_t mode = BLK_OPEN_READ | BLK_OPEN_RESTRICT_WRITES;
++	unsigned long offs = from & ~PAGE_MASK, to_read;
++	pgoff_t f_index = from >> PAGE_SHIFT;
++	struct blk_nvmem *bnv = priv;
++	size_t bytes_left = bytes;
++	struct file *bdev_file;
++	struct folio *folio;
++	void *p;
++	int ret = 0;
++
++	bdev_file = bdev_file_open_by_dev(bnv->dev->devt, mode, priv, NULL);
++	if (!bdev_file)
++		return -ENODEV;
++
++	if (IS_ERR(bdev_file))
++		return PTR_ERR(bdev_file);
++
++	while (bytes_left) {
++		folio = read_mapping_folio(bdev_file->f_mapping, f_index++, NULL);
++		if (IS_ERR(folio)) {
++			ret = PTR_ERR(folio);
++			goto err_release_bdev;
++		}
++		to_read = min_t(unsigned long, bytes_left, PAGE_SIZE - offs);
++		p = folio_address(folio) + offset_in_folio(folio, offs);
++		memcpy(val, p, to_read);
++		offs = 0;
++		bytes_left -= to_read;
++		val += to_read;
++		folio_put(folio);
++	}
++
++err_release_bdev:
++	fput(bdev_file);
++
++	return ret;
++}
++
++static int blk_nvmem_register(struct device *dev)
++{
++	struct block_device *bdev = dev_to_bdev(dev);
++	struct device_node *np = dev_of_node(dev);
++	struct nvmem_config config = {};
++	struct blk_nvmem *bnv;
++
++	/* skip devices which do not have a device tree node */
++	if (!np)
++		return 0;
++
++	/* skip devices without an nvmem layout defined */
++	if (!of_get_child_by_name(np, "nvmem-layout"))
++		return 0;
++
++	/*
++	 * skip devices which don't have GENHD_FL_NVMEM set
++	 *
++	 * This flag is used for mtdblock and ubiblock devices because
++	 * both, MTD and UBI already implement their own NVMEM provider.
++	 * To avoid registering multiple NVMEM providers for the same
++	 * device node, don't register the block NVMEM provider for them.
++	 */
++	if (!(bdev->bd_disk->flags & GENHD_FL_NVMEM))
++		return 0;
++
++	/*
++	 * skip block device too large to be represented as NVMEM devices
++	 * which are using an 'int' as address
++	 */
++	if (bdev_nr_bytes(bdev) > INT_MAX)
++		return -EFBIG;
++
++	bnv = kzalloc(sizeof(struct blk_nvmem), GFP_KERNEL);
++	if (!bnv)
++		return -ENOMEM;
++
++	config.id = NVMEM_DEVID_NONE;
++	config.dev = &bdev->bd_device;
++	config.name = dev_name(&bdev->bd_device);
++	config.owner = THIS_MODULE;
++	config.priv = bnv;
++	config.reg_read = blk_nvmem_reg_read;
++	config.size = bdev_nr_bytes(bdev);
++	config.word_size = 1;
++	config.stride = 1;
++	config.read_only = true;
++	config.root_only = true;
++	config.ignore_wp = true;
++	config.of_node = to_of_node(dev->fwnode);
++
++	bnv->dev = &bdev->bd_device;
++	bnv->nvmem = nvmem_register(&config);
++	if (IS_ERR(bnv->nvmem)) {
++		dev_err_probe(&bdev->bd_device, PTR_ERR(bnv->nvmem),
++			      "Failed to register NVMEM device\n");
++
++		kfree(bnv);
++		return PTR_ERR(bnv->nvmem);
++	}
++
++	mutex_lock(&devices_mutex);
++	list_add_tail(&bnv->list, &nvmem_devices);
++	mutex_unlock(&devices_mutex);
++
++	return 0;
++}
++
++static void blk_nvmem_unregister(struct device *dev)
++{
++	struct blk_nvmem *bnv_c, *bnv = NULL;
++
++	mutex_lock(&devices_mutex);
++	list_for_each_entry(bnv_c, &nvmem_devices, list) {
++		if (bnv_c->dev == dev) {
++			bnv = bnv_c;
++			break;
++		}
++	}
++
++	if (!bnv) {
++		mutex_unlock(&devices_mutex);
++		return;
++	}
++
++	list_del(&bnv->list);
++	mutex_unlock(&devices_mutex);
++	nvmem_unregister(bnv->nvmem);
++	kfree(bnv);
++}
++
++static int blk_nvmem_handler(struct notifier_block *this, unsigned long code, void *obj)
++{
++	struct device *dev = (struct device *)obj;
++
++	switch (code) {
++	case BLK_DEVICE_ADD:
++		return blk_nvmem_register(dev);
++	case BLK_DEVICE_REMOVE:
++		blk_nvmem_unregister(dev);
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
++static struct notifier_block blk_nvmem_notifier = {
++	.notifier_call = blk_nvmem_handler,
++};
++
++static int __init blk_nvmem_init(void)
++{
++	blk_register_notify(&blk_nvmem_notifier);
++
++	return 0;
++}
++
++static void __exit blk_nvmem_exit(void)
++{
++	blk_unregister_notify(&blk_nvmem_notifier);
++}
++
++module_init(blk_nvmem_init);
++module_exit(blk_nvmem_exit);
++
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Daniel Golle <daniel@makrotopia.org>");
++MODULE_DESCRIPTION("block device NVMEM provider");
+diff --git a/linux/drivers/nvmem/core.c b/linux/drivers/nvmem/core.c
+index 2c6b9940..34d51231 100644
+--- a/linux/drivers/nvmem/core.c
++++ b/linux/drivers/nvmem/core.c
+@@ -7,9 +7,12 @@
+  */
+ 
+ #include <linux/device.h>
++#include <linux/ctype.h>
++#include <linux/etherdevice.h>
+ #include <linux/export.h>
+ #include <linux/fs.h>
+ #include <linux/idr.h>
++#include <linux/if_ether.h>
+ #include <linux/init.h>
+ #include <linux/kref.h>
+ #include <linux/module.h>
+@@ -780,6 +783,62 @@ static int nvmem_validate_keepouts(struct nvmem_device *nvmem)
+ 	return 0;
+ }
+ 
++static int nvmem_mac_base_raw_read(void *context, const char *id, int index, unsigned int offset,
++				   void *buf, size_t bytes)
++{
++	if (WARN_ON(bytes != ETH_ALEN))
++		return -EINVAL;
++
++	if (index)
++		eth_addr_add(buf, index);
++
++	return 0;
++}
++
++static int nvmem_mac_base_ascii_read(void *context, const char *id, int index, unsigned int offset,
++				     void *buf, size_t bytes)
++{
++	u8 mac[ETH_ALEN];
++
++	if (WARN_ON(bytes != 3 * ETH_ALEN - 1))
++		return -EINVAL;
++
++	if (!mac_pton(buf, mac))
++		return -EINVAL;
++
++	if (index)
++		eth_addr_add(mac, index);
++
++	ether_addr_copy(buf, mac);
++
++	return 0;
++}
++
++static int nvmem_mac_base_hex_read(void *context, const char *id, int index, unsigned int offset,
++				   void *buf, size_t bytes)
++{
++	u8 mac[ETH_ALEN], *hexstr;
++	int i;
++
++	if (WARN_ON(bytes != 2 * ETH_ALEN))
++		return -EINVAL;
++
++	hexstr = (u8 *)buf;
++	for (i = 0; i < ETH_ALEN; i++) {
++		if (!isxdigit(hexstr[i * 2]) || !isxdigit(hexstr[i * 2 + 1]))
++			return -EINVAL;
++
++		mac[i] = (hex_to_bin(hexstr[i * 2]) << 4) | hex_to_bin(hexstr[i * 2 + 1]);
++	}
++
++	if (index)
++		eth_addr_add(mac, index);
++
++	ether_addr_copy(buf, mac);
++
++	return 0;
++}
++
+ static int nvmem_add_cells_from_dt(struct nvmem_device *nvmem, struct device_node *np)
+ {
+ 	struct device *dev = &nvmem->dev;
+@@ -819,6 +878,25 @@ static int nvmem_add_cells_from_dt(struct nvmem_device *nvmem, struct device_nod
+ 		if (nvmem->fixup_dt_cell_info)
+ 			nvmem->fixup_dt_cell_info(nvmem, &info);
+ 
++		if (of_device_is_compatible(np, "fixed-layout")) {
++			if (of_device_is_compatible(child, "mac-base")) {
++				if (info.bytes == ETH_ALEN) {
++					info.raw_len = info.bytes;
++					info.bytes = ETH_ALEN;
++					info.read_post_process = nvmem_mac_base_raw_read;
++				} else if (info.bytes == 2 * ETH_ALEN) {
++					info.raw_len = info.bytes;
++					info.bytes = ETH_ALEN;
++					info.read_post_process = nvmem_mac_base_hex_read;
++				} else if (info.bytes == 3 * ETH_ALEN - 1) {
++					info.raw_len = info.bytes;
++					info.bytes = ETH_ALEN;
++					info.read_post_process = nvmem_mac_base_ascii_read;
++				}
++
++			}
++		}
++
+ 		ret = nvmem_add_one_cell(nvmem, &info);
+ 		kfree(info.name);
+ 		if (ret) {
+diff --git a/linux/include/linux/blkdev.h b/linux/include/linux/blkdev.h
+index 00e62b81..a423cf74 100644
+--- a/linux/include/linux/blkdev.h
++++ b/linux/include/linux/blkdev.h
+@@ -81,11 +81,13 @@ struct partition_meta_info {
+  * ``GENHD_FL_NO_PART``: partition support is disabled.  The kernel will not
+  * scan for partitions from add_disk, and users can't add partitions manually.
+  *
++ * ``GENHD_FL_NVMEM``: the block device should be considered as NVMEM provider.
+  */
+ enum {
+ 	GENHD_FL_REMOVABLE			= 1 << 0,
+ 	GENHD_FL_HIDDEN				= 1 << 1,
+ 	GENHD_FL_NO_PART			= 1 << 2,
++	GENHD_FL_NVMEM				= 1 << 3,
+ };
+ 
+ enum {
+@@ -1600,4 +1602,12 @@ struct io_comp_batch {
+ 
+ #define DEFINE_IO_COMP_BATCH(name)	struct io_comp_batch name = { }
+ 
++
++#ifdef CONFIG_BLOCK_NOTIFIERS
++#define BLK_DEVICE_ADD		1
++#define BLK_DEVICE_REMOVE	2
++void blk_register_notify(struct notifier_block *nb);
++void blk_unregister_notify(struct notifier_block *nb);
++#endif
++
+ #endif /* _LINUX_BLKDEV_H */

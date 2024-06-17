@@ -1,0 +1,38 @@
+/dts-v1/;
+
+/ {
+  description = "GL.iNet GL-X3000";
+  #address-cells = <1>;
+
+  images {
+    kernel {
+      data = /incbin/("../bin/linux.zst");
+      type = "kernel";
+      arch = "arm64";
+      os = "linux";
+      compression = "zstd";
+      load = <0x48000000>;
+      entry = <0x48000000>;
+      hash {
+        algo = "sha256";
+      };
+    };
+
+    fdt {
+      data = /incbin/("../bin/linux.dtb");
+      type = "flat_dt";
+      arch = "arm64";
+      hash {
+        algo = "sha256";
+      };
+    };
+  };
+
+  configurations {
+    default = "linux";
+    linux {
+      kernel = "kernel";
+      fdt = "fdt";
+    };
+  };
+};

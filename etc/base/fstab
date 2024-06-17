@@ -1,0 +1,6 @@
+devtmpfs /dev devtmpfs mode=0755,noexec 0 0
+devpts /dev/pts devpts newinstance,noexec,ptmxmode=0666 0 0
+proc /proc proc nodev,noexec 0 0
+tmpfs /run tmpfs mode=0755,nodev,noexec 0 0
+sysfs /sys sysfs nodev,noexec 0 0
+tmpfs /tmp tmpfs mode=1777,nodev,nosuid 0 0

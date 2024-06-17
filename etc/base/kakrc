@@ -1,0 +1,45 @@
+set-option global autocomplete prompt
+set-option global autoreload true
+set-option global startup_info_version -1
+set-option global writemethod replace
+
+set-option -add global ui_options terminal_assistant=none
+set-option -add global ui_options terminal_set_title=false
+set-option -add global ui_options terminal_synchronized=false
+
+add-highlighter global/window-wrap wrap
+
+map global insert <pageup> '<a-;><pageup>'
+map global insert <pagedown> '<a-;><pagedown>'
+map global insert <a-b> '<a-;>b<a-;>;'
+map global insert <a-B> '<a-;><a-b><a-;>;'
+map global insert <a-d> '<a-;>w<a-;>d'
+map global insert <a-D> '<a-;><a-w><a-;>d'
+map global insert <a-e> '<a-;>e<a-;>;'
+map global insert <a-E> '<a-;><a-e><a-;>;'
+map global insert <a-f> '<a-;>w<right>'
+map global insert <a-F> '<a-;><a-w><right>'
+map global insert <a-esc> '<esc>'
+map global insert <c-a> '<home>'
+map global insert <c-b> '<left>'
+map global insert <c-d> '<del>'
+map global insert <c-e> '<end>'
+map global insert <c-f> '<right>'
+map global insert <c-h> '<backspace>'
+map global insert <c-k> '<a-;>;<a-;>Gl<a-;>d'
+map global insert <c-U> '<left><a-;>Gh<a-;>d'
+map global insert <c-w> '<a-;>b<a-;>d'
+map global insert <c-W> '<a-;><a-b><a-;>d'
+map global insert <c-y> '<a-;>P<right>'
+
+map global normal <#> ':comment-line<ret>'
+map global normal <home> 'gh'
+map global normal <end> 'gl'
+map global normal <a-left> 'Gh'
+map global normal <a-right> 'Gl'
+map global normal <a-up> 'x<a-_>dhP'
+map global normal <a-down> 'x<a-_>dp'
+map global normal <a-home> 'Gh'
+map global normal <a-end> 'Gl'
+map global normal <s-pageup> 'Gt<c-u>'
+map global normal <s-pagedown> 'Gb<c-d>'

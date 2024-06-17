@@ -1,0 +1,4 @@
+PermitEmptyPasswords yes
+PermitRootLogin yes
+PermitUserEnvironment yes
+Subsystem sftp internal-sftp

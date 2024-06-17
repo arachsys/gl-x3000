@@ -1,0 +1,51 @@
+diff --git a/linux/drivers/mmc/host/mtk-sd.c b/linux/drivers/mmc/host/mtk-sd.c
+index 1634b1f5..eb72a789 100644
+--- a/linux/drivers/mmc/host/mtk-sd.c
++++ b/linux/drivers/mmc/host/mtk-sd.c
+@@ -1159,7 +1159,7 @@ static void msdc_track_cmd_data(struct msdc_host *host, struct mmc_command *cmd)
+ 	if (host->error &&
+ 	    ((!mmc_op_tuning(cmd->opcode) && !host->hs400_tuning) ||
+ 	     cmd->error == -ETIMEDOUT))
+-		dev_warn(host->dev, "%s: cmd=%d arg=%08X; host->error=0x%08X\n",
++		dev_dbg(host->dev, "%s: cmd=%d arg=%08X; host->error=0x%08X\n",
+ 			 __func__, cmd->opcode, cmd->arg, host->error);
+ }
+ 
+diff --git a/tf-a/bl2/bl2_main.c b/tf-a/bl2/bl2_main.c
+index 923a554f..3a4d6054 100644
+--- a/tf-a/bl2/bl2_main.c
++++ b/tf-a/bl2/bl2_main.c
+@@ -93,7 +93,6 @@ void bl2_main(void)
+ #endif
+ 
+ 	NOTICE("BL2: %s\n", version_string);
+-	NOTICE("BL2: %s\n", build_message);
+ 
+ 	/* Perform remaining generic architectural setup in S-EL1 */
+ 	bl2_arch_setup();
+diff --git a/tf-a/bl31/bl31_main.c b/tf-a/bl31/bl31_main.c
+index c8cc2c71..6da11a26 100644
+--- a/tf-a/bl31/bl31_main.c
++++ b/tf-a/bl31/bl31_main.c
+@@ -129,7 +129,6 @@ void bl31_main(void)
+ 	manage_extensions_nonsecure_per_world();
+ 
+ 	NOTICE("BL31: %s\n", version_string);
+-	NOTICE("BL31: %s\n", build_message);
+ 
+ #if FEATURE_DETECTION
+ 	/* Detect if features enabled during compilation are supported by PE. */
+diff --git a/u-boot/common/version.c b/u-boot/common/version.c
+index 6e27bb80..97b7dfe8 100644
+--- a/u-boot/common/version.c
++++ b/u-boot/common/version.c
+@@ -8,8 +8,7 @@
+ #include <version.h>
+ #include <version_string.h>
+ 
+-#define U_BOOT_VERSION_STRING U_BOOT_VERSION " (" U_BOOT_DATE " - " \
+-	U_BOOT_TIME " " U_BOOT_TZ ")" CONFIG_IDENT_STRING
++#define U_BOOT_VERSION_STRING U_BOOT_VERSION CONFIG_IDENT_STRING
+ 
+ const char version_string[] = U_BOOT_VERSION_STRING;
+ const unsigned short version_num = U_BOOT_VERSION_NUM;
