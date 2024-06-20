@@ -61,8 +61,9 @@ start() {
     wait && read -t 1
   done <><(:)
 
-  wwan /dev/wwan0mbim0 start
-  ntpd -p /run/ntpd.pid
+  if wwan /dev/wwan0mbim0 start; then
+    ntpd -p /run/ntpd.pid
+  fi
 
   echo default-on >/sys/class/leds/green:power/trigger
 
